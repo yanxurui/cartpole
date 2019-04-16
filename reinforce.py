@@ -17,12 +17,10 @@ parser.add_argument('--seed', type=int, default=543, metavar='N',
                     help='random seed (default: 543)')
 parser.add_argument('--render', action='store_true',
                     help='render the environment')
-parser.add_argument('--log-interval', type=int, default=10, metavar='N',
-                    help='interval between training status logs (default: 10)')
 args = parser.parse_args()
 
 
-env = gym.make('CartPole-v1')
+env = gym.make('CartPole-v0')
 env.seed(args.seed)
 torch.manual_seed(args.seed)
 
@@ -80,9 +78,9 @@ def finish_episode():
 
 def main():
     running_reward = 10
-    for i_episode in count(1):
+    for i_episode in range(1000):
         state = env.reset()
-        for t in range(10000):  # Don't infinite loop while learning
+        for t in count(1):
             action = select_action(state)
             state, reward, done, _ = env.step(action)
             if args.render:
@@ -93,9 +91,7 @@ def main():
 
         running_reward = running_reward * 0.99 + t * 0.01
         finish_episode()
-        if i_episode % args.log_interval == 0:
-            print('Episode {}\tLast length: {:5d}\tAverage length: {:.2f}'.format(
-                i_episode, t, running_reward))
+        print('Episode {} steps:{} average:{:.2f}'.format(i_episode+1, t, running_reward))
         if running_reward > env.spec.reward_threshold:
             print("Solved! Running reward is now {} and "
                   "the last episode runs to {} time steps!".format(running_reward, t))
