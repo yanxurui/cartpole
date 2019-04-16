@@ -46,21 +46,19 @@ def get_model():
     model.share_memory()
     return model
 
+def epsilon(episodes):
+    return max((0-1)/(0.6*NUM_EPISODES)*episodes + 1, 0) # declind from 1 to 0 linearly
 
 def train(rank, lock, action_model, target_model, optimizer, T):
     env = gym.make('CartPole-v0')
     t = 0
-    random_action_probability = EPSILON_INIT
 
     for episode in range(NUM_EPISODES):
         state = env.reset()
-        for step in count():
-            random_action_probability *= EPSILON_DECAY
-            random_action_probability = max(random_action_probability, EPSILON_MIN)
-
+        for step in count(1):
             values = predict(action_model, state)
             # epsilon greedy exploration
-            if random.random() < random_action_probability:
+            if random.random() < epsilon(episode):
                 action = random.choice(range(ACTIONS_DIM))
             else:
                 action = values.argmax().item()
@@ -88,9 +86,10 @@ def train(rank, lock, action_model, target_model, optimizer, T):
                 optimizer.zero_grad()
                 lock.release()
             if done:
-                print('Rank {}, Episode {}, iterations: {}'.format(
+                print('Process {}, Episode {}, epsilon:{:.3f}, steps:{}'.format(
                     rank,
-                    episode,
+                    episode+1,
+                    epsilon(episode),
                     step
                 ))
                 break
