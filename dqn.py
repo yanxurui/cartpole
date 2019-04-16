@@ -1,41 +1,22 @@
-import gym
-import keras
-import numpy as np
 import random
-
-from gym import wrappers
-from keras.models import Sequential
-from keras.layers import Dense
-from keras.optimizers import Adam
-
+from itertools import count
 from collections import deque
 
-ACTIONS_DIM = 2
-OBSERVATIONS_DIM = 4
-MAX_ITERATIONS = 10**6
-LEARNING_RATE = 0.001
+import gym
+import torch
+import torch.nn as nn
+from torch.optim import Adam
 
-NUM_EPOCHS = 50
 
-GAMMA = 0.99
-REPLAY_MEMORY_SIZE = 1000
-NUM_EPISODES = 10000
-TARGET_UPDATE_FREQ = 100
-MINIBATCH_SIZE = 32
-
-EPSILON_INIT = 1
-EPSILON_DECAY = 0.99
-
-class ReplayBuffer():
-
+class ReplayBuffer:
     def __init__(self, max_size):
         self.max_size = max_size
         self.transitions = deque()
 
-    def add(self, observation, action, reward, observation2):
+    def add(self, *transition):
         if len(self.transitions) > self.max_size:
             self.transitions.popleft()
-        self.transitions.append((observation, action, reward, observation2))
+        self.transitions.append(transition)
 
     def sample(self, count):
         return random.sample(self.transitions, count)
@@ -43,119 +24,104 @@ class ReplayBuffer():
     def size(self):
         return len(self.transitions)
 
-def get_q(model, observation):
-    np_obs = np.reshape(observation, [-1, OBSERVATIONS_DIM])
-    return model.predict(np_obs)
+class Agent:
+    def __init__(self, states_dim=4, actions_dim=2, lr=0.001, gamma=0.99,
+        replay_memory_size=1000, target_update_freq=100, minibatch_size=32):
 
-def train(model, observations, targets):
-    # for i, observation in enumerate(observations):
-    #     np_obs = np.reshape(observation, [-1, OBSERVATIONS_DIM])
-    #     print "t: {}, p: {}".format(model.predict(np_obs),targets[i])
-    # exit(0)
+        self.steps = 0
+        self.episodes = 0
+        self.gamma = gamma
+        self.target_update_freq = target_update_freq
+        self.minibatch_size = minibatch_size
+        self.actions_dim = actions_dim
 
-    np_obs = np.reshape(observations, [-1, OBSERVATIONS_DIM])
-    np_targets = np.reshape(targets, [-1, ACTIONS_DIM])
+        # Initialize replay memory D to capacity N
+        self.replay = ReplayBuffer(replay_memory_size)
+        # Initialize action-value model with random weights
+        self.action_model = self._get_model(states_dim, actions_dim)
+        self.optimizer = Adam(self.action_model.parameters(), lr=lr)
+        self.criteria = nn.MSELoss()
+        # Initialize target model with same weights
+        self.target_model = self._get_model(states_dim, actions_dim)
+        self.target_model.load_state_dict(self.action_model.state_dict())
 
-    model.fit(np_obs, np_targets, epochs=1, verbose=0)
+    def _get_model(self, states_dim, actions_dim):
+        model = nn.Sequential(
+              nn.Linear(states_dim, 16),
+              nn.ReLU(),
+              nn.Linear(16, 16),
+              nn.ReLU(),
+              nn.Linear(16, actions_dim),
+            )
+        return model
 
-def predict(model, observation):
-    np_obs = np.reshape(observation, [-1, OBSERVATIONS_DIM])
-    return model.predict(np_obs)
+    def _predict(self, model, states, squeeze=False):
+        if squeeze:
+            # a batch contains a single training sample
+            return model.forward(torch.Tensor(states).unsqueeze(0)).squeeze(0)
+        else:
+            return model.forward(torch.Tensor(states))
 
-def get_model():
-    model = Sequential()
-    model.add(Dense(16, input_shape=(OBSERVATIONS_DIM, ), activation='relu'))
-    model.add(Dense(16, activation='relu'))
-    model.add(Dense(2, activation='linear'))
+    @property
+    def epsilon(self):
+        # epsilon = max(0.995**self.episodes, 0.1)
+        epsilon = max((0-1)/200*self.episodes + 1, 0) # declind from 1 to 0 linearly
+        return epsilon
 
-    model.compile(
-        optimizer=Adam(lr=LEARNING_RATE),
-        loss='mse',
-        metrics=[],
-    )
+    def act(self, state):
+        # epsilon greedy exploration
+        if random.random() >= self.epsilon:
+            q_values = self._predict(self.action_model, state, squeeze=True)
+            action = q_values.argmax().item()
+        else:
+            action = random.choice(range(self.actions_dim))
+        return action
 
-    return model
+    def _train(self):
+        # 1. sample a batch
+        # 2. compute MSE loss
+        # 3. update action network
+        sample_transitions = self.replay.sample(self.minibatch_size)
+        random.shuffle(sample_transitions)
+        state_batch, action_batch, next_state_batch, reward_batch, done_batch = zip(*sample_transitions)
+        action_batch = torch.tensor(action_batch).unsqueeze(1) # 1D -> 2D
+        predicted_values = self._predict(self.action_model, state_batch).gather(dim=1, index=action_batch)
+        mask = 1 - torch.Tensor(done_batch)
+        next_action_values = self._predict(self.target_model, next_state_batch).detach().max(dim=1)[0]
+        target_values = torch.Tensor(reward_batch) + mask * self.gamma * next_action_values
+        target_values = target_values.unsqueeze(1) # 1D -> 2D
+        self.optimizer.zero_grad()
+        loss = self.criteria(predicted_values, target_values)
+        loss.backward()
+        self.optimizer.step()
 
-def update_action(action_model, target_model, sample_transitions):
-    random.shuffle(sample_transitions)
-    batch_observations = []
-    batch_targets = []
+    def transition(self, state, action, next_state, reward, done):
+        self.steps += 1
+        if done:
+            self.episodes += 1
+            # reward = -200/\
+        self.replay.add(state, action, next_state, reward, int(done))
+        # train
+        if self.replay.size() >= self.minibatch_size:
+            self._train()
+        # update target network if needed
+        if self.steps % self.target_update_freq == 0:
+            self.target_model.load_state_dict(self.action_model.state_dict())
 
-    for sample_transition in sample_transitions:
-        old_observation, action, reward, observation = sample_transition
 
-        targets = np.reshape(get_q(action_model, old_observation), ACTIONS_DIM)
-        targets[action] = reward
-        if observation is not None:
-            predictions = predict(target_model, observation)
-            new_action = np.argmax(predictions)
-            targets[action] += GAMMA * predictions[0, new_action]
-
-        batch_observations.append(old_observation)
-        batch_targets.append(targets)
-
-    train(action_model, batch_observations, batch_targets)
-
-def main():
-    steps_until_reset = TARGET_UPDATE_FREQ
-    random_action_probability = EPSILON_INIT
-
-    # Initialize replay memory D to capacity N
-    replay = ReplayBuffer(REPLAY_MEMORY_SIZE)
-
-    # Initialize action-value model with random weights
-    action_model = get_model()
-    keras.utils.print_summary(action_model)
-    # Initialize target model with same weights
-    target_model = get_model()
-    target_model.set_weights(action_model.get_weights())
-
+def main(agent):
     env = gym.make('CartPole-v0')
-#     env = wrappers.Monitor(env, '/tmp/cartpole-experiment-1')
-
-    for episode in range(NUM_EPISODES):
-        observation = env.reset()
-
-        for iteration in range(MAX_ITERATIONS):
-            random_action_probability *= EPSILON_DECAY
-            random_action_probability = max(random_action_probability, 0.1)
-            old_observation = observation
-
-            # if episode % 10 == 0:
-            #     env.render()
-
-            if np.random.random() < random_action_probability:
-                action = np.random.choice(range(ACTIONS_DIM))
-            else:
-                q_values = get_q(action_model, observation)
-                action = np.argmax(q_values)
-
-            observation, reward, done, info = env.step(action)
-
+    for episode in range(1000):
+        state = env.reset()
+        for step in count(1):
+            action = agent.act(state)
+            next_state, reward, done, info = env.step(action)
+            agent.transition(state, action, next_state, reward, done)
+            state = next_state
             if done:
-                print('\rEpisode {}, iterations: {}'.format(
-                    episode,
-                    iteration
-                ))
-
-                # print action_model.get_weights()
-                # print target_model.get_weights()
-
-                #print 'Game finished after {} iterations'.format(iteration)
-                reward = -200
-                replay.add(old_observation, action, reward, None)
+                print('Episode {}, epsilon:{:.3f}, steps:{}'.format(episode+1, agent.epsilon, step))
                 break
 
-            replay.add(old_observation, action, reward, observation)
-
-            if replay.size() >= MINIBATCH_SIZE:
-                sample_transitions = replay.sample(MINIBATCH_SIZE)
-                update_action(action_model, target_model, sample_transitions)
-                steps_until_reset -= 1
-
-            if steps_until_reset == 0:
-                target_model.set_weights(action_model.get_weights())
-                steps_until_reset = TARGET_UPDATE_FREQ
 
 if __name__ == "__main__":
-    main()
+    main(Agent())
