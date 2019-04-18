@@ -30,9 +30,11 @@ ddqn.py
 Deep Reinforcement Learning with Double Q-learning
 
 This algorithm improves the DQN by changing the target from
-$$y^{DQN} = r + \gamma \max_a \hat{Q}(s', a)$$
+<!-- $$y^{DQN} = r + \gamma \max_a \hat{Q}(s', a)$$ -->
+![](https://latex.codecogs.com/svg.latex?y^{DQN}&space;=&space;r&space;&plus;&space;\gamma&space;\max_a&space;\hat{Q}(s',&space;a))
 to
-$$y^{DQN} = r + \gamma \hat{Q}(s', \max_a Q(s', a))$$
+<!-- $$y^{DQN} = r + \gamma \hat{Q}(s', \max_a Q(s', a))$$ -->
+![](https://latex.codecogs.com/svg.latex?y^{DDQN}&space;=&space;r&space;&plus;&space;\gamma&space;\hat{Q}(s',&space;\max_a&space;Q(s',&space;a)))
 
 
 ### Asynchronous one step Q learning
@@ -58,10 +60,7 @@ This implementation uses the same network to compute both policy (actor) and sta
 
 ## Todo
 
-* unite code style, parameters
+* unify code style and parameters
 * tune performance
-* upgrade v0 to v1
-
-
-<script src='https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-MML-AM_CHTML' async></script>
+* upgrade from v0 to v1
 
