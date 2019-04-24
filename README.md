@@ -14,10 +14,12 @@ The difference between v0 and v1 is that the max episode steps for v0 and v1 is 
 ## Algorithms
 
 ### [DQN (Deep Q Networks)](dqn.py)
-ref: Mnih, Playing Atari with Deep Reinforcement Learning, Algorithm 1 
+ref: Mnih, Human-level control through deep reinforcement learning, Algorithm 1 
 
 Compared with Q learning, DQN represents the action value function Q by a network which is called Q-netowrk. The network is trained to minimize the temporal difference, i.e., the loss function is MSE.
 It is worth noting that the implementation details may vary a lot from the original paper. For example, current implementation uses two networks: one is called value network which computes action values for control and updates at each step and the other called target network which computes target and updates less frequently by copying parameters from the value network.
+
+![DQN](images/alg_DQN-min.png)
 
 
 ### [Double DQN](ddqn.py)
@@ -36,17 +38,23 @@ ref: Mnih, Asynchronous Methods for Deep Reinforcement Learning, Algorithm 1
 
 Instead of using experience replay as DQN does, this algorithm asynchronously executes multiple agents in parallel (multiprocess), on multiple instances of the environment.
 
+<img alg="ADQN" src="images/alg_ADQN-min.png" style="max-width: 600px;">
+
 
 ### [REINFORCE or Monte-Carlo Policy Gradient](reinforce.py)
 ref: Sutton, Reinforcement Learning: An Introduction (second edition), Chapter 13.3
 
 The agent runs through an entire episode and then update the policy based on the rewards obtained.
 
+![REINFORCE](images/alg_REINFORCE-min.png)
+
 
 ### [Actor-Critic](actor_critic.py)
 ref: Sutton, Reinforcement Learning: An Introduction (second edition), Chapter 13.5
 
 This implementation uses the same network to compute both policy (actor) and state value (critic).
+
+![Actor-Critic](images/alg_actor_critic-min.png)
 
 
 ## Todo
